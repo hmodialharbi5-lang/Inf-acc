@@ -2,11 +2,14 @@ name: Build InfiniteAccessories
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
 
     steps:
@@ -18,64 +21,20 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
-      - name: Download TShock 6.1.0
-        run: |
-          wget -q \
-            "https://github.com/Pryaxis/TShock/releases/download/v6.1.0/TShock-6.1.0-for-Terraria-1.4.5.6-linux-x64-Release.zip" \
-            -O tshock.zip
-
-      - name: Extract TShock
-        run: |
-          mkdir -p tshock
-          unzip -q tshock.zip -d tshock
-
-          echo "=== TShock files ==="
-          find tshock -maxdepth 3 -type f | sort
-
-      - name: Find TShock DLLs
-        run: |
-          mkdir -p References
-
-          find tshock -type f -iname "TShockAPI.dll" \
-            -exec cp -f {} References/TShockAPI.dll \; -quit
-
-          find tshock -type f -iname "TerrariaApi.Server.dll" \
-            -exec cp -f {} References/TerrariaApi.Server.dll \; -quit
-
-          find tshock -type f -iname "TerrariaServer.dll" \
-            -exec cp -f {} References/TerrariaServer.dll \; -quit
-
-          echo "=== References found ==="
-          ls -lah References
-
-      - name: Verify references
-        run: |
-          echo "Checking TShockAPI..."
-          test -f References/TShockAPI.dll
-
-          echo "Checking TerrariaApi.Server..."
-          test -f References/TerrariaApi.Server.dll
-
-          echo "Checking TerrariaServer..."
-          test -f References/TerrariaServer.dll
-
-          echo "ALL REQUIRED REFERENCES FOUND!"
-
-      - name: Restore
+      - name: Restore NuGet packages
         run: dotnet restore InfiniteAccessories.csproj
 
-      - name: Build
-        run: |
-          dotnet build InfiniteAccessories.csproj \
-            --configuration Release \
-            --no-restore
+      - name: Build plugin
+        run: dotnet build InfiniteAccessories.csproj \
+          --configuration Release \
+          --no-restore
 
-      - name: Show output
+      - name: Show build output
         run: |
-          echo "=== BUILD OUTPUT ==="
+          echo "=== Build output ==="
           find bin/Release -type f -print
 
-      - name: Upload DLL
+      - name: Upload plugin DLL
         uses: actions/upload-artifact@v4
         with:
           name: InfiniteAccessories
