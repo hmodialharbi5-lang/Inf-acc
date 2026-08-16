@@ -9,23 +9,65 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      TSHOCK_VERSION: "v6.1.0"
+      TSHOCK_ZIP: "TShock-6.1.0-for-Terraria-1.4.5.6-linux-x64-Release.zip"
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "9.0.x"
+
+      - name: Download TShock 6.1.0
+        run: |
+          wget -q \
+            "https://github.com/Pryaxis/TShock/releases/download/${TSHOCK_VERSION}/${TSHOCK_ZIP}" \
+            -O tshock.zip
+
+      - name: Extract TShock references
+        run: |
+          mkdir -p tshock
+          unzip -q tshock.zip -d tshock
+
+          mkdir -p References
+
+          find tshock -type f -name "*.dll" -exec cp -f {} References/ \;
+
+          echo "=== References ==="
+          ls -lah References
+
+      - name: Verify required DLLs
+        run: |
+          test -f References/TerrariaServer.dll
+          test -f References/TShockAPI.dll
+          test -f References/TerrariaApi.Server.dll
+
+          echo "All required TShock references found."
 
       - name: Restore
-        run: dotnet restore InfiniteAccessories.csproj
+        run: |
+          dotnet restore InfiniteAccessories.csproj \
+            --source https://api.nuget.org/v3/index.json
 
       - name: Build
-        run: dotnet build InfiniteAccessories.csproj --configuration Release --no-restore
+        run: |
+          dotnet build InfiniteAccessories.csproj \
+            --configuration Release \
+            --no-restore \
+            -p:ReferencePath="${{ github.workspace }}/References"
 
-      - name: Upload DLL
+      - name: Show build output
+        run: |
+          echo "=== Build output ==="
+          find bin/Release -type f -maxdepth 5 -print
+
+      - name: Upload plugin DLL
         uses: actions/upload-artifact@v4
         with:
           name: InfiniteAccessories
-          path: bin/Release/**/*.dll
+          path: bin/Release/net9.0/InfiniteAccessories.dll
+          if-no-files-found: error
