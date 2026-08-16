@@ -1,32 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>InfiniteAccessories</AssemblyName>
     <RootNamespace>InfiniteAccessories</RootNamespace>
+
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <!--
-    Build against the DLLs from your TShock 6.1.0 / Terraria 1.4.5.6 server folder.
-    Put these three files in the References folder before building:
-      TerrariaServer.dll
-      TShockAPI.dll
-      TerrariaApi.Server.dll
-  -->
   <ItemGroup>
-    <Reference Include="TerrariaServer">
-      <HintPath>References\TerrariaServer.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="TShockAPI">
-      <HintPath>References\TShockAPI.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="TerrariaApi.Server">
-      <HintPath>References\TerrariaApi.Server.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
+    <PackageReference Include="TShock" Version="6.1.0" />
   </ItemGroup>
+
 </Project>
