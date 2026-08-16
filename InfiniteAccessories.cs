@@ -14,18 +14,27 @@ namespace InfiniteAccessories
         public override string Name => "Infinite Accessories";
         public override string Author => "OpenAI";
         public override Version Version => new Version(1, 1, 0);
+
         public override string Description =>
-            "Server-side extra accessories with duplicate accessory support.";
+            "Server-side extra accessory storage with duplicate support.";
 
         private readonly Dictionary<string, PlayerData> players =
-            new(StringComparer.OrdinalIgnoreCase);
+            new Dictionary<string, PlayerData>(StringComparer.OrdinalIgnoreCase);
 
-        private string DataDirectory =>
-            Path.Combine(TShock.SavePath, "InfiniteAccessories");
+        private const int MaxExtraAccessories = 20;
 
-        private const int DefaultMaxExtraAccessories = 20;
+        private string DataDirectory
+        {
+            get
+            {
+                return Path.Combine(
+                    TShock.SavePath,
+                    "InfiniteAccessories");
+            }
+        }
 
-        public InfiniteAccessoriesPlugin(Main game) : base(game)
+        public InfiniteAccessoriesPlugin(Main game)
+            : base(game)
         {
         }
 
@@ -33,7 +42,9 @@ namespace InfiniteAccessories
         {
             Directory.CreateDirectory(DataDirectory);
 
-            ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
+            ServerApi.Hooks.GameUpdate.Register(
+                this,
+                OnGameUpdate);
 
             Commands.ChatCommands.Add(
                 new Command(
@@ -41,7 +52,8 @@ namespace InfiniteAccessories
                     InfAccCommand,
                     "infacc")
                 {
-                    HelpText = "Manage your extra accessories."
+                    HelpText =
+                        "Manage your extra accessories."
                 });
 
             TShock.Log.ConsoleInfo(
@@ -52,15 +64,17 @@ namespace InfiniteAccessories
         {
             if (disposing)
             {
-                foreach (var data in players.Values)
+                foreach (PlayerData data in players.Values)
+                {
                     Save(data);
+                }
 
                 ServerApi.Hooks.GameUpdate.Deregister(
                     this,
                     OnGameUpdate);
 
-                Commands.ChatCommands.RemoveAll(c =>
-                    c.Name.Equals(
+                Commands.ChatCommands.RemoveAll(
+                    c => c.Name.Equals(
                         "infacc",
                         StringComparison.OrdinalIgnoreCase));
             }
@@ -74,15 +88,21 @@ namespace InfiniteAccessories
             {
                 TSPlayer tsPlayer = TShock.Players[i];
 
-                if (tsPlayer == null ||
-                    !tsPlayer.Active ||
-                    !tsPlayer.IsLoggedIn)
+                if (tsPlayer == null)
+                    continue;
+
+                if (!tsPlayer.Active)
+                    continue;
+
+                if (!tsPlayer.IsLoggedIn)
                     continue;
 
                 PlayerData data = GetData(tsPlayer);
 
-                if (!data.Enabled ||
-                    data.Accessories.Count == 0)
+                if (!data.Enabled)
+                    continue;
+
+                if (data.Accessories.Count == 0)
                     continue;
 
                 ApplyExtraAccessories(
@@ -95,53 +115,53 @@ namespace InfiniteAccessories
             Player player,
             PlayerData data)
         {
-            int maximum =
-                Math.Min(
-                    data.Accessories.Count,
-                    DefaultMaxExtraAccessories);
+            int count = 0;
 
-            for (int i = 0; i < maximum; i++)
+            foreach (int itemId in data.Accessories)
             {
-                int itemId = data.Accessories[i];
+                if (count >= MaxExtraAccessories)
+                    break;
 
-                if (itemId <= 0 ||
-                    itemId >= Main.maxItemTypes)
+                if (itemId <= 0)
+                    continue;
+
+                if (itemId >= Main.maxItemTypes)
                     continue;
 
                 Item accessory = new Item();
+
                 accessory.SetDefaults(itemId);
 
                 if (!accessory.accessory)
                     continue;
 
-                /*
-                 * Use Terraria's own accessory update routine.
-                 *
-                 * This means the accessory itself decides what
-                 * stats/effects it applies instead of us maintaining
-                 * a giant hard-coded accessory list.
-                 */
                 player.UpdateAccessory(
                     accessory,
                     false);
+
+                count++;
             }
         }
 
         private void InfAccCommand(CommandArgs args)
         {
-            if (args.Parameters.Count == 0 ||
-                args.Parameters[0].Equals(
-                    "help",
-                    StringComparison.OrdinalIgnoreCase))
+            if (args.Parameters.Count == 0)
             {
                 SendHelp(args.Player);
                 return;
             }
 
-            PlayerData data = GetData(args.Player);
-
             string command =
                 args.Parameters[0].ToLowerInvariant();
+
+            if (command == "help")
+            {
+                SendHelp(args.Player);
+                return;
+            }
+
+            PlayerData data =
+                GetData(args.Player);
 
             switch (command)
             {
@@ -164,24 +184,37 @@ namespace InfiniteAccessories
                     break;
 
                 case "add":
-                    AddHeldAccessory(args, data);
+                    AddHeldAccessory(
+                        args,
+                        data);
+
                     break;
 
                 case "remove":
-                    RemoveAccessory(args, data);
+                    RemoveAccessory(
+                        args,
+                        data);
+
                     break;
 
                 case "list":
-                    ListAccessories(args.Player, data);
+                    ListAccessories(
+                        args.Player,
+                        data);
+
                     break;
 
                 case "clear":
-                    ClearAccessories(args.Player, data);
+                    ClearAccessories(
+                        args.Player,
+                        data);
+
                     break;
 
                 case "max":
                     args.Player.SendInfoMessage(
-                        $"Maximum extra accessories: {DefaultMaxExtraAccessories}");
+                        "Maximum extra accessories: " +
+                        MaxExtraAccessories);
 
                     break;
 
@@ -196,28 +229,31 @@ namespace InfiniteAccessories
         private void SendHelp(TSPlayer player)
         {
             player.SendInfoMessage(
-                "Infinite Accessories commands:");
+                "=== Infinite Accessories ===");
 
             player.SendInfoMessage(
-                "/infacc on - Enable extra accessory effects.");
+                "/infacc on");
 
             player.SendInfoMessage(
-                "/infacc off - Disable extra accessory effects.");
+                "/infacc off");
 
             player.SendInfoMessage(
-                "/infacc add - Add the accessory you are holding.");
+                "/infacc add");
 
             player.SendInfoMessage(
-                "/infacc list - Show your extra accessories.");
+                "/infacc list");
 
             player.SendInfoMessage(
-                "/infacc remove <slot> - Remove an extra accessory.");
+                "/infacc remove <slot>");
 
             player.SendInfoMessage(
-                "/infacc clear - Remove all extra accessories.");
+                "/infacc clear");
 
             player.SendInfoMessage(
-                "/infacc max - Show the maximum.");
+                "/infacc max");
+
+            player.SendInfoMessage(
+                "Hold an accessory before using /infacc add.");
 
             player.SendInfoMessage(
                 "Duplicates are allowed.");
@@ -227,27 +263,51 @@ namespace InfiniteAccessories
             CommandArgs args,
             PlayerData data)
         {
-            Player player = args.Player.TPlayer;
+            Player player =
+                args.Player.TPlayer;
 
-            int selectedSlot = player.selectedItem;
+            int selectedSlot =
+                player.selectedItem;
 
-            if (selectedSlot < 0 ||
-                selectedSlot >= player.inventory.Length)
+            if (selectedSlot < 0)
             {
                 args.Player.SendErrorMessage(
-                    "Could not find the item you are holding.");
+                    "Your selected inventory slot is invalid.");
 
                 return;
             }
 
-            Item heldItem = player.inventory[selectedSlot];
-
-            if (heldItem == null ||
-                heldItem.IsAir ||
-                heldItem.type <= 0)
+            if (selectedSlot >= player.inventory.Length)
             {
                 args.Player.SendErrorMessage(
-                    "Hold an accessory in your hand first.");
+                    "Your selected inventory slot is invalid.");
+
+                return;
+            }
+
+            Item heldItem =
+                player.inventory[selectedSlot];
+
+            if (heldItem == null)
+            {
+                args.Player.SendErrorMessage(
+                    "Hold an accessory first.");
+
+                return;
+            }
+
+            if (heldItem.IsAir)
+            {
+                args.Player.SendErrorMessage(
+                    "Hold an accessory first.");
+
+                return;
+            }
+
+            if (heldItem.type <= 0)
+            {
+                args.Player.SendErrorMessage(
+                    "Hold an accessory first.");
 
                 return;
             }
@@ -255,38 +315,32 @@ namespace InfiniteAccessories
             if (!heldItem.accessory)
             {
                 args.Player.SendErrorMessage(
-                    $"{heldItem.Name} is not an accessory.");
+                    "The item you are holding is not an accessory.");
 
                 return;
             }
 
-            if (data.Accessories.Count >=
-                DefaultMaxExtraAccessories)
+            if (data.Accessories.Count >= MaxExtraAccessories)
             {
                 args.Player.SendErrorMessage(
-                    $"You reached the maximum of {DefaultMaxExtraAccessories} extra accessories.");
+                    "You reached the maximum of " +
+                    MaxExtraAccessories +
+                    " extra accessories.");
 
                 return;
             }
 
-            int itemId = heldItem.type;
-            string itemName = heldItem.Name;
+            int itemId =
+                heldItem.type;
 
-            /*
-             * Take ONE copy from the item the player is holding.
-             *
-             * This prevents /infacc add from creating free
-             * accessories out of nowhere.
-             */
+            string itemName =
+                heldItem.Name;
+
             heldItem.stack--;
 
             if (heldItem.stack <= 0)
             {
-                player.inventory[selectedSlot] = new Item();
-            }
-            else
-            {
-                player.inventory[selectedSlot] = heldItem;
+                heldItem.TurnToAir();
             }
 
             data.Accessories.Add(itemId);
@@ -294,20 +348,22 @@ namespace InfiniteAccessories
             Save(data);
 
             args.Player.SendSuccessMessage(
-                $"Added {itemName} to your extra accessories.");
+                "Added " +
+                itemName +
+                " to your extra accessories.");
 
             args.Player.SendInfoMessage(
-                $"Extra accessories: {data.Accessories.Count}/{DefaultMaxExtraAccessories}");
+                "Extra accessories: " +
+                data.Accessories.Count +
+                "/" +
+                MaxExtraAccessories);
         }
 
         private void RemoveAccessory(
             CommandArgs args,
             PlayerData data)
         {
-            if (args.Parameters.Count < 2 ||
-                !int.TryParse(
-                    args.Parameters[1],
-                    out int slot))
+            if (args.Parameters.Count < 2)
             {
                 args.Player.SendErrorMessage(
                     "Usage: /infacc remove <slot>");
@@ -315,18 +371,39 @@ namespace InfiniteAccessories
                 return;
             }
 
-            int index = slot - 1;
+            int slot;
 
-            if (index < 0 ||
-                index >= data.Accessories.Count)
+            if (!int.TryParse(
+                    args.Parameters[1],
+                    out slot))
             {
                 args.Player.SendErrorMessage(
-                    "That extra accessory slot does not exist.");
+                    "Slot must be a number.");
 
                 return;
             }
 
-            int itemId = data.Accessories[index];
+            int index =
+                slot - 1;
+
+            if (index < 0)
+            {
+                args.Player.SendErrorMessage(
+                    "That slot does not exist.");
+
+                return;
+            }
+
+            if (index >= data.Accessories.Count)
+            {
+                args.Player.SendErrorMessage(
+                    "That slot does not exist.");
+
+                return;
+            }
+
+            int itemId =
+                data.Accessories[index];
 
             if (itemId <= 0 ||
                 itemId >= Main.maxItemTypes)
@@ -335,19 +412,20 @@ namespace InfiniteAccessories
                     "The stored accessory is invalid.");
 
                 data.Accessories.RemoveAt(index);
+
                 Save(data);
 
                 return;
             }
 
-            Item item = new Item();
+            Item item =
+                new Item();
+
             item.SetDefaults(itemId);
 
-            string itemName = item.Name;
+            string itemName =
+                item.Name;
 
-            /*
-             * Give the removed accessory back to the player.
-             */
             args.Player.GiveItem(
                 itemId,
                 1,
@@ -358,7 +436,12 @@ namespace InfiniteAccessories
             Save(data);
 
             args.Player.SendSuccessMessage(
-                $"Removed {itemName} and returned it to you.");
+                "Removed " +
+                itemName +
+                " from extra accessories.");
+
+            args.Player.SendInfoMessage(
+                "The accessory was returned to your inventory.");
         }
 
         private void ListAccessories(
@@ -368,3 +451,247 @@ namespace InfiniteAccessories
             if (data.Accessories.Count == 0)
             {
                 player.SendInfoMessage(
+                    "You have no extra accessories.");
+
+                return;
+            }
+
+            player.SendInfoMessage(
+                "Extra accessories: " +
+                data.Accessories.Count +
+                "/" +
+                MaxExtraAccessories);
+
+            player.SendInfoMessage(
+                "Enabled: " +
+                data.Enabled);
+
+            for (int i = 0;
+                 i < data.Accessories.Count;
+                 i++)
+            {
+                int itemId =
+                    data.Accessories[i];
+
+                if (itemId <= 0 ||
+                    itemId >= Main.maxItemTypes)
+                {
+                    player.SendInfoMessage(
+                        (i + 1) +
+                        ". Invalid accessory");
+
+                    continue;
+                }
+
+                Item item =
+                    new Item();
+
+                item.SetDefaults(itemId);
+
+                player.SendInfoMessage(
+                    (i + 1) +
+                    ". " +
+                    item.Name);
+            }
+        }
+
+        private void ClearAccessories(
+            TSPlayer player,
+            PlayerData data)
+        {
+            if (data.Accessories.Count == 0)
+            {
+                player.SendInfoMessage(
+                    "You have no extra accessories.");
+
+                return;
+            }
+
+            int amount =
+                data.Accessories.Count;
+
+            foreach (int itemId in data.Accessories)
+            {
+                if (itemId <= 0)
+                    continue;
+
+                if (itemId >= Main.maxItemTypes)
+                    continue;
+
+                player.GiveItem(
+                    itemId,
+                    1,
+                    0);
+            }
+
+            data.Accessories.Clear();
+
+            Save(data);
+
+            player.SendSuccessMessage(
+                "Cleared " +
+                amount +
+                " extra accessories.");
+
+            player.SendInfoMessage(
+                "The stored accessories were returned to you.");
+        }
+
+        private PlayerData GetData(
+            TSPlayer player)
+        {
+            string key;
+
+            if (string.IsNullOrWhiteSpace(
+                    player.UUID))
+            {
+                key = player.Name;
+            }
+            else
+            {
+                key = player.UUID;
+            }
+
+            PlayerData data;
+
+            if (!players.TryGetValue(
+                    key,
+                    out data))
+            {
+                data =
+                    Load(key);
+
+                data.Key =
+                    key;
+
+                data.PlayerName =
+                    player.Name;
+
+                players[key] =
+                    data;
+            }
+            else
+            {
+                data.PlayerName =
+                    player.Name;
+            }
+
+            return data;
+        }
+
+        private PlayerData Load(
+            string key)
+        {
+            string path =
+                Path.Combine(
+                    DataDirectory,
+                    Sanitize(key) +
+                    ".json");
+
+            try
+            {
+                if (File.Exists(path))
+                {
+                    string json =
+                        File.ReadAllText(path);
+
+                    PlayerData data =
+                        JsonSerializer.Deserialize<PlayerData>(
+                            json);
+
+                    if (data != null)
+                    {
+                        if (data.Accessories == null)
+                        {
+                            data.Accessories =
+                                new List<int>();
+                        }
+
+                        return data;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Error(
+                    "Infinite Accessories load error: " +
+                    ex);
+            }
+
+            return new PlayerData
+            {
+                Key = key,
+                PlayerName = "",
+                Enabled = false,
+                Accessories = new List<int>()
+            };
+        }
+
+        private void Save(
+            PlayerData data)
+        {
+            if (string.IsNullOrWhiteSpace(
+                    data.Key))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(
+                    DataDirectory);
+
+                string path =
+                    Path.Combine(
+                        DataDirectory,
+                        Sanitize(data.Key) +
+                        ".json");
+
+                string json =
+                    JsonSerializer.Serialize(
+                        data,
+                        new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        });
+
+                File.WriteAllText(
+                    path,
+                    json);
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Error(
+                    "Infinite Accessories save error: " +
+                    ex);
+            }
+        }
+
+        private static string Sanitize(
+            string value)
+        {
+            foreach (char c in
+                     Path.GetInvalidFileNameChars())
+            {
+                value =
+                    value.Replace(
+                        c,
+                        '_');
+            }
+
+            return value;
+        }
+    }
+
+    public sealed class PlayerData
+    {
+        public string Key { get; set; } = "";
+
+        public string PlayerName { get; set; } = "";
+
+        public bool Enabled { get; set; }
+
+        public List<int> Accessories { get; set; } =
+            new List<int>();
+    }
+}
