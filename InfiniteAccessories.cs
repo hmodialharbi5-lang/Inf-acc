@@ -1,14 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using Terraria;
-using Terraria.ID;
 using TerrariaApi.Server;
 using TShockAPI;
-using TShockAPI.Hooks;
-using Microsoft.Xna.Framework;
 
 namespace InfiniteAccessories
 {
@@ -17,9 +13,9 @@ namespace InfiniteAccessories
     {
         public override string Name => "Infinite Accessories";
         public override string Author => "OpenAI";
-        public override Version Version => new Version(1, 0, 0);
+        public override Version Version => new Version(1, 1, 0);
         public override string Description =>
-            "Server-side extra accessory storage with duplicate accessory effect application.";
+            "Server-side extra accessories with duplicate accessory support.";
 
         private readonly Dictionary<string, PlayerData> players =
             new(StringComparer.OrdinalIgnoreCase);
@@ -27,8 +23,7 @@ namespace InfiniteAccessories
         private string DataDirectory =>
             Path.Combine(TShock.SavePath, "InfiniteAccessories");
 
-        private const int DefaultMaxExtra = 20;
-        private int MaxExtraAccessories = DefaultMaxExtra;
+        private const int DefaultMaxExtraAccessories = 20;
 
         public InfiniteAccessoriesPlugin(Main game) : base(game)
         {
@@ -40,16 +35,17 @@ namespace InfiniteAccessories
 
             ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
 
-            Commands.ChatCommands.Add(new Command(
-                "infaccessories.use",
-                InfAccCommand,
-                "infacc")
-            {
-                HelpText = "Manage your server-side extra accessories."
-            });
+            Commands.ChatCommands.Add(
+                new Command(
+                    "infaccessories.use",
+                    InfAccCommand,
+                    "infacc")
+                {
+                    HelpText = "Manage your extra accessories."
+                });
 
             TShock.Log.ConsoleInfo(
-                "Infinite Accessories v1.0.0 loaded. Commands: /infacc help");
+                "Infinite Accessories v1.1.0 loaded.");
         }
 
         protected override void Dispose(bool disposing)
@@ -76,17 +72,22 @@ namespace InfiniteAccessories
         {
             for (int i = 0; i < Main.maxPlayers; i++)
             {
-                TSPlayer ts = TShock.Players[i];
+                TSPlayer tsPlayer = TShock.Players[i];
 
-                if (ts?.Active != true || ts.IsLoggedIn != true)
+                if (tsPlayer == null ||
+                    !tsPlayer.Active ||
+                    !tsPlayer.IsLoggedIn)
                     continue;
 
-                var data = GetData(ts);
+                PlayerData data = GetData(tsPlayer);
 
-                if (!data.Enabled || data.Accessories.Count == 0)
+                if (!data.Enabled ||
+                    data.Accessories.Count == 0)
                     continue;
 
-                ApplyExtraAccessories(ts.TPlayer, data);
+                ApplyExtraAccessories(
+                    tsPlayer.TPlayer,
+                    data);
             }
         }
 
@@ -94,31 +95,36 @@ namespace InfiniteAccessories
             Player player,
             PlayerData data)
         {
-            int applied = 0;
+            int maximum =
+                Math.Min(
+                    data.Accessories.Count,
+                    DefaultMaxExtraAccessories);
 
-            foreach (int itemId in data.Accessories)
+            for (int i = 0; i < maximum; i++)
             {
-                if (applied >= MaxExtraAccessories)
-                    break;
+                int itemId = data.Accessories[i];
 
-                if (itemId <= 0 || itemId >= ItemLoaderItemCount())
+                if (itemId <= 0 ||
+                    itemId >= Main.maxItemTypes)
                     continue;
 
-                var item = new Item();
-                item.SetDefaults(itemId);
+                Item accessory = new Item();
+                accessory.SetDefaults(itemId);
 
-                if (!item.accessory)
+                if (!accessory.accessory)
                     continue;
 
-                player.UpdateAccessory(item, false);
-
-                applied++;
+                /*
+                 * Use Terraria's own accessory update routine.
+                 *
+                 * This means the accessory itself decides what
+                 * stats/effects it applies instead of us maintaining
+                 * a giant hard-coded accessory list.
+                 */
+                player.UpdateAccessory(
+                    accessory,
+                    false);
             }
-        }
-
-        private static int ItemLoaderItemCount()
-        {
-            return Main.maxItemTypes;
         }
 
         private void InfAccCommand(CommandArgs args)
@@ -128,26 +134,23 @@ namespace InfiniteAccessories
                     "help",
                     StringComparison.OrdinalIgnoreCase))
             {
-                args.Player.SendInfoMessage(
-                    "/infacc on|off | add <item id> | remove <slot> | list | clear | max");
-
-                args.Player.SendInfoMessage(
-                    $"Extra accessory limit: {MaxExtraAccessories}");
-
+                SendHelp(args.Player);
                 return;
             }
 
-            var data = GetData(args.Player);
-            string sub = args.Parameters[0].ToLowerInvariant();
+            PlayerData data = GetData(args.Player);
 
-            switch (sub)
+            string command =
+                args.Parameters[0].ToLowerInvariant();
+
+            switch (command)
             {
                 case "on":
                     data.Enabled = true;
                     Save(data);
 
                     args.Player.SendSuccessMessage(
-                        "Infinite Accessories enabled.");
+                        "Infinite Accessories is now ON.");
 
                     break;
 
@@ -156,96 +159,145 @@ namespace InfiniteAccessories
                     Save(data);
 
                     args.Player.SendSuccessMessage(
-                        "Infinite Accessories disabled.");
+                        "Infinite Accessories is now OFF.");
 
                     break;
 
                 case "add":
-                    AddAccessory(args, data);
+                    AddHeldAccessory(args, data);
                     break;
 
                 case "remove":
                     RemoveAccessory(args, data);
                     break;
 
-                case "clear":
-                    data.Accessories.Clear();
-                    Save(data);
-
-                    args.Player.SendSuccessMessage(
-                        "Extra accessory storage cleared.");
-
-                    break;
-
                 case "list":
                     ListAccessories(args.Player, data);
                     break;
 
+                case "clear":
+                    ClearAccessories(args.Player, data);
+                    break;
+
                 case "max":
                     args.Player.SendInfoMessage(
-                        $"Server extra accessory limit: {MaxExtraAccessories}");
+                        $"Maximum extra accessories: {DefaultMaxExtraAccessories}");
 
                     break;
 
                 default:
                     args.Player.SendErrorMessage(
-                        "Unknown subcommand. Use /infacc help.");
+                        "Unknown command. Use /infacc help.");
 
                     break;
             }
         }
 
-        private void AddAccessory(
+        private void SendHelp(TSPlayer player)
+        {
+            player.SendInfoMessage(
+                "Infinite Accessories commands:");
+
+            player.SendInfoMessage(
+                "/infacc on - Enable extra accessory effects.");
+
+            player.SendInfoMessage(
+                "/infacc off - Disable extra accessory effects.");
+
+            player.SendInfoMessage(
+                "/infacc add - Add the accessory you are holding.");
+
+            player.SendInfoMessage(
+                "/infacc list - Show your extra accessories.");
+
+            player.SendInfoMessage(
+                "/infacc remove <slot> - Remove an extra accessory.");
+
+            player.SendInfoMessage(
+                "/infacc clear - Remove all extra accessories.");
+
+            player.SendInfoMessage(
+                "/infacc max - Show the maximum.");
+
+            player.SendInfoMessage(
+                "Duplicates are allowed.");
+        }
+
+        private void AddHeldAccessory(
             CommandArgs args,
             PlayerData data)
         {
-            if (args.Parameters.Count < 2 ||
-                !int.TryParse(
-                    args.Parameters[1],
-                    out int itemId))
+            Player player = args.Player.TPlayer;
+
+            int selectedSlot = player.selectedItem;
+
+            if (selectedSlot < 0 ||
+                selectedSlot >= player.inventory.Length)
             {
                 args.Player.SendErrorMessage(
-                    "Usage: /infacc add <item id>");
-
-                args.Player.SendInfoMessage(
-                    "Use Terraria item IDs. Example: /infacc add 554");
+                    "Could not find the item you are holding.");
 
                 return;
             }
 
-            if (itemId <= 0 || itemId >= Main.maxItemTypes)
+            Item heldItem = player.inventory[selectedSlot];
+
+            if (heldItem == null ||
+                heldItem.IsAir ||
+                heldItem.type <= 0)
             {
                 args.Player.SendErrorMessage(
-                    "That item ID is outside the valid Terraria item range.");
+                    "Hold an accessory in your hand first.");
 
                 return;
             }
 
-            var item = new Item();
-            item.SetDefaults(itemId);
-
-            if (!item.accessory)
+            if (!heldItem.accessory)
             {
                 args.Player.SendErrorMessage(
-                    $"{item.Name} (ID {itemId}) is not an accessory.");
+                    $"{heldItem.Name} is not an accessory.");
 
                 return;
             }
 
-            if (data.Accessories.Count >= MaxExtraAccessories)
+            if (data.Accessories.Count >=
+                DefaultMaxExtraAccessories)
             {
                 args.Player.SendErrorMessage(
-                    $"You reached the extra accessory limit ({MaxExtraAccessories}).");
+                    $"You reached the maximum of {DefaultMaxExtraAccessories} extra accessories.");
 
                 return;
+            }
+
+            int itemId = heldItem.type;
+            string itemName = heldItem.Name;
+
+            /*
+             * Take ONE copy from the item the player is holding.
+             *
+             * This prevents /infacc add from creating free
+             * accessories out of nowhere.
+             */
+            heldItem.stack--;
+
+            if (heldItem.stack <= 0)
+            {
+                player.inventory[selectedSlot] = new Item();
+            }
+            else
+            {
+                player.inventory[selectedSlot] = heldItem;
             }
 
             data.Accessories.Add(itemId);
+
             Save(data);
 
             args.Player.SendSuccessMessage(
-                $"Added {item.Name} (ID {itemId}) to extra accessories. " +
-                $"You now have {data.Accessories.Count}/{MaxExtraAccessories} extra.");
+                $"Added {itemName} to your extra accessories.");
+
+            args.Player.SendInfoMessage(
+                $"Extra accessories: {data.Accessories.Count}/{DefaultMaxExtraAccessories}");
         }
 
         private void RemoveAccessory(
@@ -274,5 +326,45 @@ namespace InfiniteAccessories
                 return;
             }
 
+            int itemId = data.Accessories[index];
+
+            if (itemId <= 0 ||
+                itemId >= Main.maxItemTypes)
+            {
+                args.Player.SendErrorMessage(
+                    "The stored accessory is invalid.");
+
+                data.Accessories.RemoveAt(index);
+                Save(data);
+
+                return;
+            }
+
+            Item item = new Item();
+            item.SetDefaults(itemId);
+
+            string itemName = item.Name;
+
+            /*
+             * Give the removed accessory back to the player.
+             */
+            args.Player.GiveItem(
+                itemId,
+                1,
+                0);
+
             data.Accessories.RemoveAt(index);
-           
+
+            Save(data);
+
+            args.Player.SendSuccessMessage(
+                $"Removed {itemName} and returned it to you.");
+        }
+
+        private void ListAccessories(
+            TSPlayer player,
+            PlayerData data)
+        {
+            if (data.Accessories.Count == 0)
+            {
+                player.SendInfoMessage(
