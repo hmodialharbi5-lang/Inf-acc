@@ -25,13 +25,11 @@ jobs:
         run: dotnet restore InfiniteAccessories.csproj
 
       - name: Build plugin
-        run: dotnet build InfiniteAccessories.csproj \
-          --configuration Release \
-          --no-restore
+        run: dotnet build InfiniteAccessories.csproj --configuration Release --no-restore
 
       - name: Show build output
         run: |
-          echo "=== Build output ==="
+          echo "=== BUILD OUTPUT ==="
           find bin/Release -type f -print
 
       - name: Upload plugin DLL
